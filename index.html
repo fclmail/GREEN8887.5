@@ -362,8 +362,24 @@
         const amount = document.getElementById("loanAmount").value;
         const parsedAmount = ethers.utils.parseUnits(amount, 6); // USDC uses 6 decimals
 
-        const tx = await contract.startArbitrage(parsedAmount); // assumes `startArbitrage(uint256)` exists
-        log("🚀 Transaction sent: " + tx.hash);
+        const tokenPair = document.getElementById("tokenPair").value;
+const flashLoanProvider = document.getElementById("flashLoanProvider").value;
+
+const buyRouter = "0xa5E0829CaCED8fFDD4De3c43696c57F7D7A678ff";  // Example: QuickSwap
+const sellRouter = "0x1b02da8cb0d097eb8d57a175b88c7d8b47997506"; // Example: SushiSwap
+const tokenAddress = tokenPair === "USDC-WETH"
+  ? "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619"
+  : "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270";
+
+const tx = await contract.executeArbitrage(
+  buyRouter,
+  sellRouter,
+  tokenAddress,
+  parsedAmount,
+  false,
+  flashLoanProvider
+);
+	      log("🚀 Transaction sent: " + tx.hash);
         await tx.wait();
         log("✅ Arbitrage completed: " + tx.hash);
         updateBalances();
