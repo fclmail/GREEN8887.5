@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Polygon Arbitrage Bot</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background-color: #121212;
+      color: #00ff00;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #000;
+      border: 1px solid #333;
+    }
+    h1 {
+      text-align: center;
+      border-bottom: 1px solid #333;
+      padding-bottom: 10px;
+    }
+    .panel, .wallet-info, .profit-display {
+      background-color: #1a1a1a;
+      border: 1px solid #333;
+      margin-bottom: 20px;
+      padding: 15px;
+    }
+    label {
+      display: block;
+      margin: 10px 0 5px;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      background-color: #000;
+      color: #00ff00;
+      border: 1px solid #333;
+    }
+    button {
+      background-color: #003300;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #006600;
+    }
+    #status {
+      height: 200px;
+      overflow-y: scroll;
+      background-color: #000;
+      border: 1px solid #333;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Polygon Arbitrage Bot</h1>
+    <button onclick="connectWallet()">Connect Wallet</button>
+
+    <div class="wallet-info">
+      <div>Wallet Address: <span id="walletAddress">Not Connected</span></div>
+      <div>USDC Balance: <span id="usdcBalance">0.00</span></div>
+      <div>Contract Balance: <span id="contractBalance">0.00</span></div>
+    </div>
+
+    <div class="profit-display">
+      Total Profits: <span id="totalProfit">$0.00</span>
+    </div>
+
+    <div class="panel">
+      <h3>Arbitrage Settings</h3>
+      <label>Token Pair:</label>
+      <select id="tokenPair">
+        <option value="USDC-WETH">USDC-WETH</option>
+        <option value="USDC-WMATIC">USDC-WMATIC</option>
+      </select>
+
+      <label>Loan Amount (USDC):</label>
+      <input type="number" id="loanAmount" value="1000" min="100" step="100" />
+
+      <label>Flashloan Provider:</label>
+      <select id="flashLoanProvider">
+        <option value="aave">Aave</option>
+        <option value="dodo">DODO</option>
+      </select>
+
+      <label>Gas Price (Gwei):</label>
+      <input type="number" id="gasPrice" placeholder="Auto" />
+
+      <label>Gas Limit:</label>
+      <input type="number" id="gasLimit" placeholder="Auto" />
+
+      <button id="startBtn" disabled>Start Arbitrage</button>
+      <button id="withdrawBtn" disabled>Withdraw Profits</button>
+    </div>
+
+    <div class="panel">
+      <h3>Status</h3>
+      <div id="status"></div>
+    </div>
+  </div>
+
+  <script>
+    const contractAddress = "0xYourContractAddressHere"; // 🟢PLACEHOLDER: Replace with your deployed contract
+    const contractABI = [/* 🟢PLACEHOLDER: Add your Aave-compatible Arbitrage Contract ABI here */];
+    const usdcAddress = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
+    const usdcABI = ["function balanceOf(address) view returns (uint256)", "function decimals() view returns (uint8)"];
+
+    let provider, signer, walletAddress, contract;
+
+    // 🟢11: Wallet connection logic
+    async function connectWallet() {
+      try {
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        signer = provider.getSigner();
+        walletAddress = await signer.getAddress();
+
+        contract = new ethers.Contract(contractAddress, contractABI, signer);
+
+        log("✅ Wallet connected: " + walletAddress);
+        document.getElementById("walletAddress").innerText = walletAddress;
+
+        document.getElementById("startBtn").disabled = false;
+        document.getElementById("withdrawBtn").disabled = false;
+
+        updateBalances();
+        setInterval(updateBalances, 10000); // Auto-update every 10 sec
+      } catch (err) {
+        log("❌ Wallet connection error: " + err.message);
+      }
+    }
+
+    async function updateBalances() {
+      try {
+        const usdc = new ethers.Contract(usdcAddress, usdcABI, provider);
+        const balance = await usdc.balanceOf(walletAddress);
+        const decimals = await usdc.decimals();
+        const formatted = (balance / (10 ** decimals)).toFixed(2);
+        document.getElementById("usdcBalance").innerText = formatted;
+
+        const contractBal = await usdc.balanceOf(contractAddress);
+        const formattedContract = (contractBal / (10 ** decimals)).toFixed(2);
+        document.getElementById("contractBalance").innerText = formattedContract;
+      } catch (e) {
+        log("⚠️ Balance fetch error: " + e.message);
+      }
+    }
+
+    function log(message) {
+      const status = document.getElementById("status");
+      status.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}<br>`;
+      status.scrollTop = status.scrollHeight;
+    }
+
+    document.getElementById("startBtn").addEventListener("click", async () => {
+      try {
+        const amount = document.getElementById("loanAmount").value;
+        const parsedAmount = ethers.utils.parseUnits(amount, 6); // USDC uses 6 decimals
+
+        const tx = await contract.startArbitrage(parsedAmount); // assumes `startArbitrage(uint256)` exists
+        log("🚀 Transaction sent: " + tx.hash);
+        await tx.wait();
+        log("✅ Arbitrage completed: " + tx.hash);
+        updateBalances();
+      } catch (e) {
+        log("❌ Arbitrage failed: " + e.message);
+      }
+    });
+
+    document.getElementById("withdrawBtn").addEventListener("click", async () => {
+      try {
+        const tx = await contract.withdrawProfits(); // assumes withdrawProfits() exists
+        log("📤 Withdraw initiated: " + tx.hash);
+        await tx.wait();
+        log("✅ Profits withdrawn to wallet");
+        updateBalances();
+      } catch (e) {
+        log("❌ Withdraw failed: " + e.message);
+      }
+    });
+  </script>
+</body>
+</html>
